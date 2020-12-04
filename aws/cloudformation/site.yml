@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  paramHostedRoute53ZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Default: Z1HFJOWMX02O69
+    Description: The Route53 Zone ID to write the CNAME entry to when authorizing the certificate.
+
+
+Resources:
+
+  certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: 'robertswarthout.com'
+      DomainValidationOptions:
+        - DomainName: 'robertswarthout.com'
+          HostedZoneId: !Ref paramHostedRoute53ZoneId
+      ValidationMethod: DNS
+
+  s3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketName: !Join
+        - "-"
+        - - "robertswarthout-com"
+          - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Select
+                - 2
+                - !Split
+                  - "/"
+                  - !Ref "AWS::StackId"
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+  cloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Ref s3Bucket
+    DependsOn:
+      - s3Bucket
+
+  s3ReadPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref s3Bucket
+      PolicyDocument:
+        Statement:
+          - Action: 's3:GetObject'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:s3:::${s3Bucket}/*'
+            Principal:
+              CanonicalUser: !GetAtt cloudFrontOriginAccessIdentity.S3CanonicalUserId
+    DependsOn:
+      - s3Bucket
+      - cloudFrontOriginAccessIdentity
+
+  cloudfront:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - 'robertswarthout.com'
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: true
+          DefaultTTL: 60
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+          MaxTTL: 300
+          MinTTL: 0
+          TargetOriginId: s3origin
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: "index.html"
+        Enabled: true
+        HttpVersion: http2
+        Origins:
+          - DomainName: !GetAtt 's3Bucket.DomainName'
+            Id: s3origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${cloudFrontOriginAccessIdentity}'
+        PriceClass: PriceClass_All
+        ViewerCertificate:
+          AcmCertificateArn:
+            Ref: certificate
+          MinimumProtocolVersion: TLSv1.2_2019
+          SslSupportMethod: sni-only
+    DependsOn:
+      - certificate
+      - s3Bucket
+      - cloudFrontOriginAccessIdentity
+
+  route53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt cloudfront.DomainName
+      HostedZoneId: !Ref paramHostedRoute53ZoneId
+      Name: !Sub "robertswarthout.com."
+      Type: A
+    DependsOn:
+      - cloudfront
+
+  iamPublishUser:
+    Type: AWS::IAM::User
+    Properties:
+      Policies:
+        - PolicyName: !Sub 'publish-to-${s3Bucket}'
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - "s3:DeleteObject"
+                  - "s3:ListBucket"
+                  - "s3:PutObject"
+                  - "s3:PutObjectAcl"
+                Effect: Allow
+                Resource:
+                  - !Sub 'arn:aws:s3:::${s3Bucket}'
+                  - !Sub 'arn:aws:s3:::${s3Bucket}/*'
+    DependsOn:
+      - s3Bucket
+
+
+Outputs:
+  s3Bucket:
+    Description: S3 Bucket name
+    Value: !Ref s3Bucket
+    Export:
+      Name: s3Bucket
