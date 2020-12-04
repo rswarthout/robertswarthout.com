@@ -2,7 +2,7 @@
   "scripts": {
     "build:dev": "webpack --mode development",
     "build:prod": "export NODE_ENV=production && webpack --mode production",
-    "deploy": "find ./dist/ -name '.DS_Store' -type f -delete && aws s3 sync ./dist/ s3://robertswarthout-com-105fc590/ --cache-control 'max-age=604800' --delete --profile robertswarthout-com --exclude index.html && aws s3 sync ./dist/ s3://robertswarthout-com-105fc590/ --cache-control 'no-cache' --profile robertswarthout-com "
+    "deploy": "find ./dist/ -name '.DS_Store' -type f -delete && export RSC_BUCKET=`aws s3api list-buckets --query 'Buckets[?starts_with(Name, \\`robertswarthout-com-\\`) == \\`true\\`].Name' --profile robertswarthout-com --output text` && aws s3 sync ./dist/ s3://$RSC_BUCKET/ --cache-control 'max-age=604800' --delete --profile robertswarthout-com --exclude index.html && aws s3 sync ./dist/ s3://$RSC_BUCKET/ --cache-control 'no-cache' --profile robertswarthout-com "
   },
   "dependencies": {
     "@tailwindcss/aspect-ratio": "^0.2.0",
