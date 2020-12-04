@@ -133,11 +133,10 @@ Resources:
                   - !Sub 'arn:aws:s3:::${s3Bucket}'
                   - !Sub 'arn:aws:s3:::${s3Bucket}/*'
               - Action:
-                  - "s3:ListAllMyBuckets"
+                  - "cloudformation:DescribeStacks"
                 Effect: Allow
                 Resource:
                   - '*'
-
     DependsOn:
       - s3Bucket
 
